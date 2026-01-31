@@ -1,0 +1,21 @@
+# Dependencies
+node_modules/
+
+# Output
+downloads/
+
+# Debug
+debug_*.png
+
+# Login state (sensitive)
+storageState.json
+
+# macOS
+.DS_Store
+
+# Test
+test.sh
+
+# Saved pages (optional reference)
+pages/
+screenshot/

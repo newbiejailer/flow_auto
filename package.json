@@ -1,0 +1,15 @@
+{
+  "name": "flow-auto",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "login": "node scripts/login.js",
+    "flow": "node scripts/flow.js",
+    "flow:download": "node scripts/flow_download.js",
+    "flow:run": "node scripts/flow_run_and_download.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.43.1"
+  }
+}
