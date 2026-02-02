@@ -25,6 +25,15 @@ npm run flow:download
 
 # 无头模式运行（不显示浏览器窗口）
 HEADLESS=true npm run flow:run -- "你的提示词"
+
+# Frames to Video 模式（需要首帧图）
+npm run flow:frames -- --first=./first.png "提示词"
+
+# Frames to Video 模式（首帧+尾帧）
+npm run flow:frames -- --first=./first.png --last=./last.png "提示词"
+
+# Frames to Video 无头模式
+HEADLESS=true npm run flow:frames -- --first=./first.png "提示词"
 ```
 
 ## 配置

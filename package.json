@@ -7,7 +7,8 @@
     "login": "node scripts/login.js",
     "flow": "node scripts/flow.js",
     "flow:download": "node scripts/flow_download.js",
-    "flow:run": "node scripts/flow_run_and_download.js"
+    "flow:run": "node scripts/flow_run_and_download.js",
+    "flow:frames": "node scripts/flow_frames.js"
   },
   "devDependencies": {
     "playwright": "^1.43.1"

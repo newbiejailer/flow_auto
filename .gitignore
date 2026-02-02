@@ -15,6 +15,7 @@ storageState.json
 
 # Test
 test.sh
+test/
 
 # Saved pages (optional reference)
 pages/

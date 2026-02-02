@@ -26,6 +26,12 @@ npm run flow:run -- "你的提示词"
 
 # 无头模式运行（不显示浏览器窗口）
 HEADLESS=true npm run flow:run -- "你的提示词"
+
+# Frames to Video 模式（需要首帧图）
+npm run flow:frames -- --first=./first.png "提示词"
+
+# Frames to Video 模式（首帧+尾帧）
+npm run flow:frames -- --first=./first.png --last=./last.png "提示词"
 ```
 
 ## 架构
@@ -34,6 +40,7 @@ HEADLESS=true npm run flow:run -- "你的提示词"
 - `login.js` - 打开浏览器让用户手动登录，登录后按 Enter 保存登录态到 storageState.json。
 - `flow.js` - 完整流程：创建新项目、配置设置、提交提示词、等待生成、下载首个结果。需要编辑文件顶部的 `CONFIG` 对象设置提示词和偏好。
 - `flow_run_and_download.js` - 相同流程，但通过命令行参数接收提示词，下载顶部一排所有生成的视频。
+- `flow_frames.js` - Frames to Video 模式：上传首帧图（必需）和尾帧图（可选），配合提示词生成视频。通过命令行参数 `--first` 和 `--last` 指定图片路径。
 - `flow_download.js` - 从已有项目 URL 下载视频（在 CONFIG.url 中设置）。
 
 **配置模式：**
