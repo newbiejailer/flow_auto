@@ -10,24 +10,16 @@ Flow Auto 是基于 Playwright 的自动化工具，用于操作 Google Labs Flo
 
 由于 Google Flow 会检测自动化浏览器指纹，脚本需要通过 CDP (Chrome DevTools Protocol) 连接到真实的 Chrome 浏览器。
 
-**启动 Chrome 调试模式：**
-```bash
-# 1. 关闭所有 Chrome 窗口
-pkill -f "Google Chrome"
-
-# 2. 用调试模式启动 Chrome（使用临时配置目录）
-/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug-profile
-
-# 3. 在打开的 Chrome 中登录 Google 账号
-```
-
 ## 命令
 
 ```bash
 # 安装依赖
 npm i
 
-# Text to Video 模式（需要先启动 Chrome 调试模式）
+# 启动 Chrome 调试模式并登录（首次使用或需要重新登录时）
+npm run login
+
+# Text to Video 模式
 npm run run -- "你的提示词"
 
 # Frames to Video 模式（需要首帧图）
@@ -68,6 +60,7 @@ npm run build
 - `upload.ts` - 上传首帧/尾帧图片
 
 **入口脚本 (`scripts/`)：**
+- `login.ts` - 启动 Chrome 调试模式，等待用户登录
 - `run.ts` - Text to Video 模式：创建新项目、配置、生成、下载
 - `frames.ts` - Frames to Video 模式：上传帧图、配置、生成、下载
 - `download.ts` - 从已有项目 URL 下载视频
