@@ -1,10 +1,15 @@
 import readline from "node:readline";
 import { spawn, execSync } from "node:child_process";
+import os from "node:os";
+import path from "node:path";
 import { createConfig } from "../src/config.js";
 
 const CHROME_PATH = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
 const DEBUG_PORT = 9222;
-const USER_DATA_DIR = "/tmp/chrome-debug-profile";
+
+// 使用用户真实的 Chrome profile，而不是临时目录
+// 这样可以复用已有的登录状态和浏览器指纹
+const USER_DATA_DIR = path.join(os.homedir(), "Library/Application Support/Google/Chrome");
 
 function prompt(question: string): Promise<string> {
   const rl = readline.createInterface({
@@ -55,6 +60,9 @@ async function main() {
   console.log("Flow Auto 登录助手");
   console.log("========================================");
   console.log("");
+  console.log("注意：将使用你真实的 Chrome 配置启动调试模式");
+  console.log("这会关闭所有现有的 Chrome 窗口");
+  console.log("");
 
   // 检查是否已有 Chrome 调试端口在运行
   if (isPortListening(DEBUG_PORT)) {
@@ -97,9 +105,9 @@ async function main() {
   console.log("✓ Chrome 已启动（调试端口: " + DEBUG_PORT + "）");
   console.log("✓ 已打开 Flow 页面");
   console.log("");
-  console.log("请在浏览器中完成以下操作：");
-  console.log("1. 登录你的 Google 账号");
-  console.log("2. 确认可以正常访问 Flow");
+  console.log("请在浏览器中确认：");
+  console.log("1. 已登录 Google 账号（使用真实 profile 应该已自动登录）");
+  console.log("2. 可以正常访问 Flow 并手动生成视频");
   console.log("");
 
   await prompt("登录完成后，按 Enter 键继续...");
