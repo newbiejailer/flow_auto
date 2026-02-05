@@ -52,4 +52,10 @@ export interface BrowserInstance {
   page: Page;
 }
 
+export interface GenerationResult {
+  urls: string[];
+  needsRetry: boolean;
+  error?: string;
+}
+
 export type { Page, Locator, Browser, BrowserContext };

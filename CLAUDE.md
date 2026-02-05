@@ -6,16 +6,28 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Flow Auto 是基于 Playwright 的自动化工具，用于操作 Google Labs Flow (labs.google/fx/tools/flow) 视频生成服务。脚本可自动创建项目、配置设置、提交提示词并下载生成的视频。
 
+## 前置要求
+
+由于 Google Flow 会检测自动化浏览器指纹，脚本需要通过 CDP (Chrome DevTools Protocol) 连接到真实的 Chrome 浏览器。
+
+**启动 Chrome 调试模式：**
+```bash
+# 1. 关闭所有 Chrome 窗口
+pkill -f "Google Chrome"
+
+# 2. 用调试模式启动 Chrome（使用临时配置目录）
+/Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --remote-debugging-port=9222 --user-data-dir=/tmp/chrome-debug-profile
+
+# 3. 在打开的 Chrome 中登录 Google 账号
+```
+
 ## 命令
 
 ```bash
 # 安装依赖
 npm i
 
-# 手动登录并保存登录态
-npm run login
-
-# Text to Video 模式
+# Text to Video 模式（需要先启动 Chrome 调试模式）
 npm run run -- "你的提示词"
 
 # Frames to Video 模式（需要首帧图）
@@ -27,9 +39,6 @@ npm run frames -- --first=./first.png --last=./last.png "提示词"
 # 从已有项目 URL 下载视频
 npm run download
 
-# 无头模式运行（不显示浏览器窗口）
-HEADLESS=true npm run run -- "你的提示词"
-
 # 类型检查
 npm run build
 ```
@@ -39,7 +48,7 @@ npm run build
 **共享模块 (`src/`)：**
 - `types.ts` - TypeScript 类型定义
 - `config.ts` - 默认配置和选择器
-- `browser.ts` - 浏览器启动和上下文管理
+- `browser.ts` - 通过 CDP 连接 Chrome 浏览器
 - `utils/random.ts` - 随机数、延迟、正则工具
 - `utils/interaction.ts` - 人性化交互（点击、输入）
 - `utils/logger.ts` - 日志和步骤计数
@@ -59,7 +68,6 @@ npm run build
 - `upload.ts` - 上传首帧/尾帧图片
 
 **入口脚本 (`scripts/`)：**
-- `login.ts` - 打开浏览器让用户手动登录，登录后按 Enter 保存登录态
 - `run.ts` - Text to Video 模式：创建新项目、配置、生成、下载
 - `frames.ts` - Frames to Video 模式：上传帧图、配置、生成、下载
 - `download.ts` - 从已有项目 URL 下载视频
@@ -71,17 +79,16 @@ npm run build
 - `settings` - aspectRatio、outputsPerPrompt、model
 - `selectors` - UI 元素的 CSS/role 选择器
 - `human` - 模拟人工操作的延迟时间
-- `storageStatePath` - Playwright 登录态存储路径
 
 **登录态：**
-脚本使用 `storageState.json` 保持登录状态。运行 `npm run login` 可手动登录并刷新该文件。
+脚本通过 CDP 连接到已启动的 Chrome，直接使用 Chrome 中的登录状态，无需单独保存。
 
 **输出：**
 生成的视频保存到 `downloads/` 目录。
 
-## Playwright 配置
+## 浏览器连接
 
-- 超时：120 秒
-- 默认非无头模式，可通过 `HEADLESS=true` 环境变量启用无头模式
-- 视口：1440x900
-- slowMo：非无头模式 120ms，无头模式 80ms
+脚本通过 CDP 连接到本地 9222 端口的 Chrome 实例：
+- 连接地址：`http://127.0.0.1:9222`
+- 复用已有的浏览器上下文和登录状态
+- 优先使用已打开的 Flow 页面，否则创建新标签页

@@ -1,4 +1,4 @@
-import type { Page, Config } from "../types.js";
+import type { Page, Config, GenerationResult, BrowserContext } from "../types.js";
 import { log } from "../utils/logger.js";
 import { dismissPopups } from "../actions/popups.js";
 import path from "node:path";
@@ -35,6 +35,88 @@ async function checkGenerationFailed(page: Page): Promise<boolean> {
   }
 }
 
+async function checkSomethingWentWrong(page: Page): Promise<boolean> {
+  // Method 1: Use page.evaluate to search all text content
+  const foundInPage = await page.evaluate(() => {
+    const bodyText = document.body?.innerText || "";
+    // Case-insensitive search for various error patterns
+    const patterns = [
+      /something went wrong/i,
+      /something's wrong/i,
+      /went wrong/i,
+      /出错了/i,
+      /发生错误/i,
+    ];
+    return patterns.some((p) => p.test(bodyText));
+  });
+
+  if (foundInPage) {
+    log("  [DEBUG] 在页面文本中检测到错误关键词");
+    return true;
+  }
+
+  // Method 2: Check specific locators as fallback
+  const locatorPatterns = [
+    "text=/something went wrong/i",
+    "text=/went wrong/i",
+    '[role="alert"]:has-text("wrong")',
+    '[class*="error"]:has-text("wrong")',
+    '[class*="Error"]:has-text("wrong")',
+  ];
+
+  for (const pattern of locatorPatterns) {
+    try {
+      const errorElement = page.locator(pattern).first();
+      if (await errorElement.isVisible({ timeout: 300 })) {
+        log(`  [DEBUG] 通过选择器检测到错误: ${pattern}`);
+        return true;
+      }
+    } catch {
+      // Continue checking other patterns
+    }
+  }
+
+  return false;
+}
+
+export async function clearBrowserCacheAndReload(
+  page: Page,
+  context: BrowserContext
+): Promise<void> {
+  log("  检测到 'Something went wrong' 错误，正在清理缓存（保留登录状态）...");
+
+  // NOTE: 不清理 cookies，因为登录状态存储在 cookies 中
+  // await context.clearCookies();
+
+  // Clear localStorage and sessionStorage
+  await page.evaluate(() => {
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch {
+      // Ignore errors if storage is not accessible
+    }
+  });
+
+  // Clear browser cache via CDP (not cookies)
+  try {
+    const client = await page.context().newCDPSession(page);
+    await client.send("Network.clearBrowserCache");
+    await client.detach();
+    log("  浏览器缓存已清理");
+  } catch {
+    // CDP not available, skip
+  }
+
+  log("  localStorage/sessionStorage 已清理，正在刷新页面...");
+
+  // Reload the page
+  await page.reload({ waitUntil: "networkidle" });
+  await page.waitForTimeout(2000);
+
+  log("  页面已刷新");
+}
+
 async function retryGeneration(page: Page, config: Config): Promise<boolean> {
   const reuseBtn = page
     .locator(
@@ -67,11 +149,12 @@ async function retryGeneration(page: Page, config: Config): Promise<boolean> {
 
 export async function waitForNewTopRow(
   page: Page,
+  context: BrowserContext,
   config: Config,
   expectedCount: number,
   baseline: string[],
   timeoutMs: number
-): Promise<string[]> {
+): Promise<GenerationResult> {
   const start = Date.now();
   let lastUrls: string[] = [];
   let stableCount = 0;
@@ -79,12 +162,34 @@ export async function waitForNewTopRow(
   let lastLoggedCount = -1;
   let retryCount = 0;
   let lastPopupCheck = 0;
+  let lastErrorCheck = 0;
 
   while (Date.now() - start < timeoutMs) {
     // Check for popups every 30s
     if (Date.now() - lastPopupCheck > 30000) {
       await dismissPopups(page);
       lastPopupCheck = Date.now();
+    }
+
+    // Check for "Something went wrong" error every 2s
+    if (Date.now() - lastErrorCheck > 2000) {
+      const hasError = await checkSomethingWentWrong(page);
+      if (hasError) {
+        log("  检测到 'Something went wrong' 错误，需要清理缓存后重试...");
+        const screenshotPath = path.resolve(
+          process.cwd(),
+          `debug_something_went_wrong_${Date.now()}.png`
+        );
+        await page.screenshot({ path: screenshotPath, fullPage: true });
+        log(`  已保存调试截图: ${screenshotPath}`);
+
+        return {
+          urls: [],
+          needsRetry: true,
+          error: "Something went wrong",
+        };
+      }
+      lastErrorCheck = Date.now();
     }
 
     // Check for generation failure
@@ -142,7 +247,7 @@ export async function waitForNewTopRow(
       stableCount >= config.stableChecks
     ) {
       log(`  生成完成，共 ${urls.length} 个视频`);
-      return urls;
+      return { urls, needsRetry: false };
     }
 
     await page.waitForTimeout(1000);
@@ -156,5 +261,5 @@ export async function waitForNewTopRow(
     log(`  已保存调试截图: ${screenshotPath}`);
   }
 
-  return lastNonBaseline;
+  return { urls: lastNonBaseline, needsRetry: false };
 }

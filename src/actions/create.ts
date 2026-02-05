@@ -35,6 +35,7 @@ export async function clickCreate(page: Page, config: Config): Promise<void> {
 }
 
 export async function checkError(page: Page): Promise<string | null> {
+  // Check for alert role elements
   const errorMsg = page.locator('[role="alert"], .error-message').first();
   try {
     if (await errorMsg.isVisible({ timeout: 1000 })) {
@@ -46,5 +47,16 @@ export async function checkError(page: Page): Promise<string | null> {
   } catch {
     // No error message
   }
+
+  // Also check for "Something went wrong" in page content
+  const hasWrongError = await page.evaluate(() => {
+    const bodyText = document.body?.innerText || "";
+    return /something went wrong/i.test(bodyText);
+  });
+
+  if (hasWrongError) {
+    return "Something went wrong";
+  }
+
   return null;
 }

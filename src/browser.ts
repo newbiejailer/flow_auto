@@ -3,38 +3,38 @@ import fs from "node:fs";
 import type { BrowserInstance, BrowserLaunchOptions } from "./types.js";
 import { HEADLESS } from "./config.js";
 
+// 获取 Chrome DevTools WebSocket URL
+async function getChromeWsEndpoint(): Promise<string> {
+  const response = await fetch("http://127.0.0.1:9222/json/version");
+  const data = await response.json();
+  return data.webSocketDebuggerUrl;
+}
+
 export async function launchBrowser(
   options: BrowserLaunchOptions
 ): Promise<BrowserInstance> {
-  const headless = options.headless;
+  // 获取 WebSocket 端点并连接
+  const wsEndpoint = await getChromeWsEndpoint();
+  const browser = await chromium.connectOverCDP(wsEndpoint);
 
-  const browser = await chromium.launch({
-    headless,
-    slowMo: headless ? 80 : 120,
-    args: headless
-      ? [
-          "--disable-blink-features=AutomationControlled",
-          "--disable-features=IsolateOrigins,site-per-process",
-          "--no-sandbox",
-        ]
-      : [],
-  });
+  // 获取已有的 context
+  const contexts = browser.contexts();
+  const context = contexts[0];
 
-  const context = await browser.newContext({
-    acceptDownloads: true,
-    storageState: fs.existsSync(options.storageStatePath)
-      ? options.storageStatePath
-      : undefined,
-    userAgent:
-      "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-    viewport: { width: 1440, height: 900 },
-  });
+  if (!context) {
+    throw new Error("没有找到已有的浏览器上下文，请先在 Chrome 中打开一个页面");
+  }
 
-  const page = await context.newPage();
+  // 尝试复用已有的 Flow 页面，或者创建新标签页
+  const pages = context.pages();
+  let page = pages.find(p => p.url().includes("labs.google/fx/tools/flow"));
 
-  await page.addInitScript(() => {
-    Object.defineProperty(navigator, "webdriver", { get: () => false });
-  });
+  if (!page) {
+    page = pages.find(p => p.url() === "about:blank" || p.url() === "chrome://newtab/");
+    if (!page) {
+      page = await context.newPage();
+    }
+  }
 
   return { browser, context, page };
 }
@@ -42,14 +42,16 @@ export async function launchBrowser(
 export async function launchLoginBrowser(
   storageStatePath: string
 ): Promise<BrowserInstance> {
-  const browser = await chromium.launch({
-    headless: false,
-    slowMo: 50,
-  });
+  const wsEndpoint = await getChromeWsEndpoint();
+  const browser = await chromium.connectOverCDP(wsEndpoint);
+  const contexts = browser.contexts();
+  let context = contexts[0];
 
-  const context = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-  });
+  if (!context) {
+    context = await browser.newContext({
+      viewport: { width: 1440, height: 900 },
+    });
+  }
 
   const page = await context.newPage();
 
@@ -57,7 +59,13 @@ export async function launchLoginBrowser(
 }
 
 export async function closeBrowser(instance: BrowserInstance): Promise<void> {
-  await instance.context.close();
+  // 只关闭页面，不关闭整个浏览器
+  for (const page of instance.context.pages()) {
+    if (page.url().includes("labs.google/fx/tools/flow")) {
+      // 保留 Flow 页面
+      continue;
+    }
+  }
   await instance.browser.close();
 }
 

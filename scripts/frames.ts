@@ -7,9 +7,16 @@ import { openSettings, applySettings } from "../src/actions/settings.js";
 import { selectMode } from "../src/actions/mode.js";
 import { fillPrompt } from "../src/actions/prompt.js";
 import { clickCreate, checkError } from "../src/actions/create.js";
-import { getTopRowVideoUrls, waitForNewTopRow } from "../src/video/detect.js";
+import {
+  getTopRowVideoUrls,
+  waitForNewTopRow,
+  clearBrowserCacheAndReload,
+} from "../src/video/detect.js";
 import { downloadVideos } from "../src/video/download.js";
 import { uploadFrames } from "../src/frames/upload.js";
+import type { FramesConfig, Page, BrowserContext } from "../src/types.js";
+
+const MAX_CACHE_RETRIES = 3;
 
 interface ParsedArgs {
   first: string;
@@ -52,6 +59,111 @@ function parseArgs(): ParsedArgs {
     process.exit(1);
   }
   return result;
+}
+
+async function runFramesGeneration(
+  page: Page,
+  context: BrowserContext,
+  config: FramesConfig
+): Promise<string[]> {
+  let cacheRetryCount = 0;
+
+  while (cacheRetryCount < MAX_CACHE_RETRIES) {
+    // Dismiss any popups before starting
+    await dismissPopups(page);
+
+    // Re-upload frames if this is a retry
+    if (cacheRetryCount > 0) {
+      logStep("重新选择生成模式");
+      await selectMode(page, config);
+      log(`  模式: ${config.modeOptionLabel}`);
+      await page.waitForTimeout(2000);
+      await dismissPopups(page);
+
+      logStep("重新上传帧图片");
+      await uploadFrames(page, config);
+      await dismissPopups(page);
+    }
+
+    logStep("输入提示词");
+    await dismissPopups(page);
+    await fillPrompt(page, config);
+    log("  提示词已填入");
+    await dismissPopups(page);
+
+    logStep("开始生成");
+    await dismissPopups(page);
+    const baseline = await getTopRowVideoUrls(page);
+    await clickCreate(page, config);
+    await pause(page, 500, 800);
+
+    // Check for immediate errors after clicking Create
+    const errorText = await checkError(page);
+    if (errorText) {
+      log(`  警告: 页面显示错误信息 - ${errorText}`);
+
+      // If it's "Something went wrong", trigger retry immediately
+      if (/something went wrong/i.test(errorText)) {
+        cacheRetryCount++;
+        if (cacheRetryCount >= MAX_CACHE_RETRIES) {
+          throw new Error(
+            `多次尝试后仍然遇到 '${errorText}' 错误，已达到最大重试次数 (${MAX_CACHE_RETRIES})`
+          );
+        }
+
+        log(`  准备清理缓存并重试 (${cacheRetryCount}/${MAX_CACHE_RETRIES})...`);
+        await clearBrowserCacheAndReload(page, context);
+        await page.waitForLoadState("networkidle");
+        await pause(page, 1500, 2000);
+        await dismissPopups(page);
+        log("  重新开始生成流程...");
+        continue;
+      }
+    }
+
+    log("  已点击创建按钮，等待生成...");
+
+    const expected =
+      Number.parseInt(config.settings.outputsPerPrompt || "1", 10) || 1;
+    const result = await waitForNewTopRow(
+      page,
+      context,
+      config,
+      expected,
+      baseline,
+      config.maxWaitMs
+    );
+
+    if (result.needsRetry) {
+      cacheRetryCount++;
+      if (cacheRetryCount >= MAX_CACHE_RETRIES) {
+        throw new Error(
+          `多次尝试后仍然遇到 '${result.error}' 错误，已达到最大重试次数 (${MAX_CACHE_RETRIES})`
+        );
+      }
+
+      log(`  准备清理缓存并重试 (${cacheRetryCount}/${MAX_CACHE_RETRIES})...`);
+      await clearBrowserCacheAndReload(page, context);
+
+      // Wait for page to stabilize after reload
+      await page.waitForLoadState("networkidle");
+      await pause(page, 1500, 2000);
+
+      // Close any popups that might appear after refresh
+      await dismissPopups(page);
+
+      log("  重新开始生成流程...");
+      continue;
+    }
+
+    if (result.urls.length < config.minOutputs) {
+      throw new Error("未检测到新生成的视频链接。");
+    }
+
+    return result.urls;
+  }
+
+  throw new Error("生成失败，已达到最大重试次数");
 }
 
 async function main() {
@@ -115,38 +227,8 @@ async function main() {
   await uploadFrames(page, config);
   await dismissPopups(page);
 
-  logStep("输入提示词");
-  await dismissPopups(page);
-  await fillPrompt(page, config);
-  log("  提示词已填入");
-  await dismissPopups(page);
-
-  logStep("开始生成");
-  await dismissPopups(page);
-  const baseline = await getTopRowVideoUrls(page);
-  await clickCreate(page, config);
-  await pause(page, 500, 800);
-
-  const errorText = await checkError(page);
-  if (errorText) {
-    log(`  警告: 页面显示错误信息 - ${errorText}`);
-  }
-
-  log("  已点击创建按钮，等待生成...");
-
-  const expected =
-    Number.parseInt(config.settings.outputsPerPrompt || "1", 10) || 1;
-  const urls = await waitForNewTopRow(
-    page,
-    config,
-    expected,
-    baseline,
-    config.maxWaitMs
-  );
-
-  if (urls.length < config.minOutputs) {
-    throw new Error("未检测到新生成的视频链接。");
-  }
+  // Run generation with retry logic
+  const urls = await runFramesGeneration(page, context, config);
 
   logStep("下载视频");
   await downloadVideos(page, urls, "flow_frames");
